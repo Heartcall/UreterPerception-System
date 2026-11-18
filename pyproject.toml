@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ureter-perception"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+video = ["opencv-python"]
+kidneydepth = ["tifffile"]
+
+[project.scripts]
+ureter-perception = "ureter_perception.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

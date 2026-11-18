@@ -1,0 +1,5 @@
+event_ns,available_ns,clock_id,kind,bend_rad,insertion_mm
+60,65,fixture,command,0.3,1.0
+95,105,fixture,feedback,0.2,0.8
+85,90,fixture,feedback,0.1,0.6
+120,125,fixture,feedback,0.4,1.0
