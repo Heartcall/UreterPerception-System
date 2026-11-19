@@ -4,7 +4,7 @@ import numpy as np
 
 from .alignment import AlignedRobot
 from .calibration import Calibration
-from .contracts import Frame
+from .contracts import DepthObservation, Frame
 from .depth import DepthBackend, estimate_depth
 from .geometry import GeometryObservation, observe_geometry
 from .segmentation import Segmenter, segment
@@ -20,6 +20,7 @@ class FrameResult:
     geometry: GeometryObservation
     measurements: Measurements
     robot: AlignedRobot
+    depth: DepthObservation | None = None
 
     def record(self) -> dict:
         return {
@@ -40,4 +41,4 @@ def process_frame(frame: Frame, segmenter: Segmenter, depth_backend: DepthBacken
     depth = estimate_depth(frame, depth_backend)
     geometry = observe_geometry(labels, depth, calibration)
     counts = tuple(np.bincount(labels.labels.ravel(), minlength=3).tolist())
-    return FrameResult(frame, counts, labels.tip_uv, labels.tip_source, geometry, measure(geometry), robot)
+    return FrameResult(frame, counts, labels.tip_uv, labels.tip_source, geometry, measure(geometry), robot, depth)

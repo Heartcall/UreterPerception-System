@@ -11,6 +11,8 @@ dependencies = ["numpy>=1.24"]
 [project.optional-dependencies]
 video = ["opencv-python"]
 kidneydepth = ["tifffile"]
+depth-v2 = ["torch", "transformers>=4.46,<5", "pillow", "tifffile", "safetensors"]
+depth-v3 = ["torch", "torchvision", "pillow", "tifffile", "safetensors", "einops", "addict", "omegaconf"]
 
 [project.scripts]
 ureter-perception = "ureter_perception.cli:main"

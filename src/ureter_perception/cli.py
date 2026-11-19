@@ -37,13 +37,30 @@ def _source(args) -> UreterSAMReplay:
 
 def _replay(args) -> None:
     source = _source(args)
+    backend = None
+    if args.depth_run or args.depth_weights:
+        if not (args.depth_run and args.depth_weights):
+            raise ValueError("Supply both --depth-run and --depth-weights for adapted depth")
+        from .depth_tuning import AdaptedDepth
+        backend = AdaptedDepth(args.depth_weights, args.depth_run, args.device)
     with write_run(args.output, {
         "mode": "replay", "video_sha256": source.manifest["input_sha256"],
         "g0_cache": str(args.g0_cache.resolve()),
-        "timestamp_source": "frame_index_fps", "depth_backend": None,
+        "timestamp_source": "frame_index_fps", "depth_backend": backend.source if backend else None,
+        "depth_run": str(args.depth_run.resolve()) if backend else None,
     }) as write:
         for cached in source.frames(args.limit):
-            write(process_frame(cached.frame, cached).record())
+            result = process_frame(cached.frame, cached, backend)
+            record = result.record()
+            if result.depth is not None:
+                directory = args.output / "depth"
+                directory.mkdir(exist_ok=True)
+                path = directory / f"{cached.frame.index:06d}.npz"
+                np.savez_compressed(path, values=result.depth.values, valid=result.depth.valid)
+                record["depth"] = dict(path=path.relative_to(args.output).as_posix(),
+                                       representation=result.depth.representation,
+                                       source=result.depth.source)
+            write(record)
 
 
 def _synthetic(args) -> None:
@@ -96,6 +113,29 @@ def _alignment(args) -> None:
     _print(asdict(timeline.at(args.capture_ns, args.decision_ns, args.max_age_ns)))
 
 
+def _depth_split(args) -> None:
+    from .depth_benchmark import inventory
+    _print(inventory(args.archive))
+
+
+def _depth_benchmark(args) -> None:
+    from .depth_benchmark import benchmark
+    _print(benchmark(args.archive, args.model, args.weights, args.output,
+                     args.per_sequence, args.device))
+
+
+def _tune_depth(args) -> None:
+    from .depth_tuning import finetune
+    _print(finetune(args.archive, args.model, args.weights, args.output,
+                    args.epochs, args.per_sequence, args.device))
+
+
+def _adapted_depth(args) -> None:
+    from .depth_tuning import evaluate_adapted
+    _print(evaluate_adapted(args.archive, args.weights, args.depth_run, args.output,
+                            args.per_sequence, args.device))
+
+
 def _scene_args(parser: argparse.ArgumentParser, handler) -> None:
     parser.add_argument("--input", type=Path, required=True)
     parser.set_defaults(handler=handler)
@@ -108,10 +148,23 @@ def main(argv: list[str] | None = None) -> int:
     replay = run.add_parser("replay", help="Replay a UreterSAM video and matching cache")
     _video_args(replay)
     replay.add_argument("--output", type=Path, required=True)
+    replay.add_argument("--depth-run", type=Path)
+    replay.add_argument("--depth-weights", type=Path)
+    replay.add_argument("--device", default="cuda:0")
     replay.set_defaults(handler=_replay)
     synthetic = run.add_parser("synthetic", help="Run a known metric scene")
     _scene_args(synthetic, _synthetic)
     synthetic.add_argument("--output", type=Path, required=True)
+
+    tune = run.add_parser("finetune-depth", help="Adapt the selected depth head to native KidneyDepth targets")
+    tune.add_argument("--archive", type=Path, required=True)
+    tune.add_argument("--model", choices=["v2-small", "v3-small"], required=True)
+    tune.add_argument("--weights", type=Path, required=True)
+    tune.add_argument("--output", type=Path, required=True)
+    tune.add_argument("--epochs", type=int, default=2)
+    tune.add_argument("--per-sequence", type=int, default=4)
+    tune.add_argument("--device", default="cuda:0")
+    tune.set_defaults(handler=_tune_depth)
 
     module = commands.add_parser("eval").add_subparsers(required=True)
     segmentation = module.add_parser("segmentation")
@@ -131,6 +184,25 @@ def main(argv: list[str] | None = None) -> int:
     depth.add_argument("--trajectory", required=True)
     depth.add_argument("--index", type=int, default=0)
     depth.set_defaults(handler=_depth)
+    split = module.add_parser("depth-split", help="Audit paired KidneyDepth trajectory groups")
+    split.add_argument("--archive", type=Path, required=True)
+    split.set_defaults(handler=_depth_split)
+    bench = module.add_parser("depth-benchmark", help="Evaluate frozen relative depth on validation sequences")
+    bench.add_argument("--archive", type=Path, required=True)
+    bench.add_argument("--model", choices=["v2-small", "v3-small"], required=True)
+    bench.add_argument("--weights", type=Path, required=True)
+    bench.add_argument("--output", type=Path, required=True)
+    bench.add_argument("--per-sequence", type=int, default=8)
+    bench.add_argument("--device", default="cuda:0")
+    bench.set_defaults(handler=_depth_benchmark)
+    adapted = module.add_parser("adapted-depth", help="Paired frozen and adapted errors on test trajectories")
+    adapted.add_argument("--archive", type=Path, required=True)
+    adapted.add_argument("--weights", type=Path, required=True)
+    adapted.add_argument("--depth-run", type=Path, required=True)
+    adapted.add_argument("--output", type=Path, required=True)
+    adapted.add_argument("--per-sequence", type=int, default=16)
+    adapted.add_argument("--device", default="cuda:0")
+    adapted.set_defaults(handler=_adapted_depth)
     alignment = module.add_parser("alignment")
     _scene_args(alignment, _alignment)
     alignment.add_argument("--clock-id", required=True)
