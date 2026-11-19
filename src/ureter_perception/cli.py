@@ -71,6 +71,12 @@ def _geometry(args) -> None:
     _print(asdict(geometry))
 
 
+def _images(args) -> None:
+    from .evaluation import evaluate_images
+
+    _print(evaluate_images(args.dataset, args.splits, args.uretersam, args.output, args.device))
+
+
 def _targeting(args) -> None:
     _print(asdict(measure(read_geometry(args.input))))
 
@@ -111,6 +117,13 @@ def main(argv: list[str] | None = None) -> int:
     segmentation = module.add_parser("segmentation")
     _video_args(segmentation)
     segmentation.set_defaults(handler=_segmentation)
+    images = module.add_parser("images", help="Score independent YOLO polygon images using frozen G0")
+    images.add_argument("--dataset", type=Path, required=True)
+    images.add_argument("--uretersam", type=Path, required=True)
+    images.add_argument("--splits", nargs="+", choices=["train", "valid", "test"], default=["test"])
+    images.add_argument("--output", type=Path, required=True)
+    images.add_argument("--device", default="auto")
+    images.set_defaults(handler=_images)
     _scene_args(module.add_parser("geometry"), _geometry)
     _scene_args(module.add_parser("targeting"), _targeting)
     depth = module.add_parser("depth")
